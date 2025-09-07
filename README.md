@@ -73,7 +73,7 @@ Month 1 – Python Foundations
 
 Month 2 – Databases + APIs
 
- Replace text file with SQLite database
+ Replace text file with Postgres database
 
  Support multiple lists (Groceries, Chores, To-Do)
 
