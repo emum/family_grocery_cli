@@ -1,7 +1,11 @@
-from datetime import datetime
-from db import init_db, list_items as db_list_items, add_item as db_add_item, remove_item as db_remove_item, toggle_purchased as db_toggle_purchased
+from db import (
+    init_db, list_items as db_list_items, add_item as db_add_item,
+    remove_item as db_remove_item, toggle_purchased as db_toggle_purchased,
+    create_recipe, add_recipe_to_grocery
+)
+from recipes import spoonacular_from_url, parse_pasted_ingredients
 
-SORT_MODE = "name"  # keep for display text, sorting is handled in SQL
+SORT_MODE = "name"
 
 def show_list():
     items = db_list_items()
@@ -11,7 +15,10 @@ def show_list():
     print("\nGrocery List (auto-sorted: unpurchased first; by " + SORT_MODE + "):")
     for i, item in enumerate(items, 1):
         box = "☑" if item["purchased"] else "☐"
-        print(f"{i}. {box} {item['name']}  —  added {item['added_at']}")
+        qty_unit = f"{item['quantity']:.2f}".rstrip("0").rstrip(".")
+        if item.get("unit"):
+            qty_unit += f" {item['unit']}"
+        print(f"{i}. {box} {item['name']}  —  {qty_unit}  —  added {item['added_at']}")
     print()
     return items
 
@@ -20,7 +27,13 @@ def add_item():
     if not name:
         print("No item entered.")
         return
-    db_add_item(name)
+    qty = input("Quantity (default 1): ").strip()
+    unit = input("Unit (optional): ").strip() or None
+    try:
+        q = float(qty) if qty else 1.0
+    except ValueError:
+        q = 1.0
+    db_add_item(name, q, unit)
     print(f"Added: {name}")
 
 def remove_item():
@@ -52,15 +65,45 @@ def toggle_purchased():
     except ValueError:
         print("Please enter a valid number.")
 
+def add_recipe_from_url():
+    url = input("Paste recipe URL: ").strip()
+    if not url:
+        print("No URL provided.")
+        return
+    try:
+        data = spoonacular_from_url(url)
+    except Exception as e:
+        print(f"Error fetching recipe: {e}")
+        return
+    rid = create_recipe(data["title"], data["source_url"], data["ingredients"])
+    add_recipe_to_grocery(rid)
+    print(f"Added '{data['title']}' ingredients to grocery list.")
+
+def add_recipe_by_paste():
+    title = input("Recipe title: ").strip()
+    print("Paste ingredients (one per line). Finish with an empty line:")
+    lines = []
+    while True:
+        line = input()
+        if not line.strip():
+            break
+        lines.append(line)
+    data = parse_pasted_ingredients(title, "\n".join(lines))
+    rid = create_recipe(data["title"], data["source_url"], data["ingredients"])
+    add_recipe_to_grocery(rid)
+    print(f"Added '{data['title']}' ingredients to grocery list.")
+
 def main():
-    init_db()  # ensures table exists
+    init_db()
     while True:
         print("=== Family Grocery List ===")
         print("1. Show list")
         print("2. Add item")
         print("3. Toggle purchased")
         print("4. Remove item")
-        print("5. Quit")
+        print("5. Add recipe from URL (Spoonacular)")
+        print("6. Add recipe by pasting ingredients")
+        print("7. Quit")
         choice = input("Choose an option: ").strip()
 
         if choice == "1":
@@ -72,6 +115,10 @@ def main():
         elif choice == "4":
             remove_item()
         elif choice == "5":
+            add_recipe_from_url()
+        elif choice == "6":
+            add_recipe_by_paste()
+        elif choice == "7":
             print("Goodbye!")
             break
         else:
