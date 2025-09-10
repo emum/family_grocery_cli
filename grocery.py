@@ -1,7 +1,8 @@
 from db import (
     init_db, list_items as db_list_items, add_item as db_add_item,
     remove_item as db_remove_item, toggle_purchased as db_toggle_purchased,
-    create_recipe, add_recipe_to_grocery
+    create_recipe, add_recipe_to_grocery,
+    add_pantry_item, list_pantry_items, get_expiring_items
 )
 from recipes import spoonacular_from_url, parse_pasted_ingredients
 
@@ -93,6 +94,54 @@ def add_recipe_by_paste():
     add_recipe_to_grocery(rid)
     print(f"Added '{data['title']}' ingredients to grocery list.")
 
+def pantry_menu():
+    while True:
+        print("\n=== Pantry Menu ===")
+        print("1. Show pantry items")
+        print("2. Add pantry item")
+        print("3. Show expiring soon")
+        print("4. Back to main menu")
+        choice = input("Choose: ").strip()
+
+        if choice == "1":
+            items = list_pantry_items()
+            if not items:
+                print("Pantry is empty.")
+            else:
+                for i, item in enumerate(items, 1):
+                    exp = f" (expires {item['expires_at']})" if item['expires_at'] else ""
+                    unit = f" {item['unit']}" if item['unit'] else ""
+                    print(f"{i}. {item['name']} — {item['quantity']}{unit}{exp}")
+        elif choice == "2":
+            name = input("Item name: ").strip()
+            qty = input("Quantity (default 1): ").strip()
+            unit = input("Unit (optional): ").strip() or None
+            exp = input("Expiration date (YYYY-MM-DD, optional): ").strip() or None
+            try:
+                q = float(qty) if qty else 1.0
+            except ValueError:
+                q = 1.0
+            add_pantry_item(name, q, unit, exp)
+            print(f"Added {name} to pantry.")
+        elif choice == "3":
+            days = input("Show items expiring within how many days? (default 3): ").strip()
+            try:
+                d = int(days) if days else 3
+            except ValueError:
+                d = 3
+            expiring = get_expiring_items(d)
+            if not expiring:
+                print(f"No items expiring in {d} days.")
+            else:
+                print(f"Items expiring in {d} days:")
+                for e in expiring:
+                    unit = f" {e['unit']}" if e['unit'] else ""
+                    print(f"- {e['name']} — {e['quantity']}{unit} (expires {e['expires_at']})")
+        elif choice == "4":
+            break
+        else:
+            print("Invalid choice.")
+
 def main():
     init_db()
     while True:
@@ -104,6 +153,7 @@ def main():
         print("5. Add recipe from URL (Spoonacular)")
         print("6. Add recipe by pasting ingredients")
         print("7. Quit")
+        print("8. Pantry Menu")
         choice = input("Choose an option: ").strip()
 
         if choice == "1":
@@ -121,8 +171,11 @@ def main():
         elif choice == "7":
             print("Goodbye!")
             break
+        elif choice == "8":
+            pantry_menu()
         else:
             print("Invalid choice, try again.")
 
 if __name__ == "__main__":
     main()
+

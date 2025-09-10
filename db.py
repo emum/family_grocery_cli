@@ -3,7 +3,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from sqlalchemy import (
     create_engine, MetaData, Table, Column,
-    Integer, String, Boolean, DateTime, Float, ForeignKey, text, select, delete, update
+    Integer, String, Boolean, DateTime, Float, ForeignKey, Date, text, select, delete, update
 )
 
 load_dotenv()
@@ -25,6 +25,17 @@ grocery_items = Table(
     # NEW in Week 6:
     Column("quantity", Float, nullable=False, server_default=text("1")),
     Column("unit", String(50), nullable=True),
+)
+
+pantry_items = Table(
+    "pantry_items",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", String(200), nullable=False),
+    Column("quantity", Float, nullable=False, server_default=text("1")),
+    Column("unit", String(50), nullable=True),
+    Column("expires_at", Date, nullable=True),  # NEW: expiration date
+    Column("added_at", DateTime, nullable=False, default=datetime.utcnow),
 )
 
 recipes = Table(
@@ -160,3 +171,53 @@ def add_recipe_to_grocery(recipe_id: int):
     for ing in rec["ingredients"]:
         add_item(ing["name"], ing.get("quantity", 1) or 1, ing.get("unit"))
     return True
+
+def add_pantry_item(name: str, quantity: float = 1.0, unit: str | None = None, expires_at: str | None = None):
+    """Add an item to pantry, with optional expiration date (YYYY-MM-DD)."""
+    from datetime import datetime
+    exp_date = None
+    if expires_at:
+        try:
+            exp_date = datetime.strptime(expires_at, "%Y-%m-%d").date()
+        except ValueError:
+            exp_date = None
+
+    with engine.begin() as conn:
+        conn.execute(pantry_items.insert().values(
+            name=name,
+            quantity=quantity,
+            unit=unit,
+            expires_at=exp_date,
+            added_at=datetime.utcnow()
+        ))
+
+def list_pantry_items():
+    stmt = select(pantry_items).order_by(pantry_items.c.expires_at.asc().nulls_last())
+    with engine.begin() as conn:
+        rows = conn.execute(stmt).mappings().all()
+    return [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "quantity": r["quantity"],
+            "unit": r["unit"],
+            "expires_at": r["expires_at"].strftime("%Y-%m-%d") if r["expires_at"] else None,
+            "added_at": r["added_at"].strftime("%Y-%m-%d %H:%M"),
+        } for r in rows
+    ]
+
+def get_expiring_items(days: int = 3):
+    """Return items expiring within `days` days."""
+    from datetime import datetime, timedelta
+    today = datetime.now().date()
+    cutoff = today + timedelta(days=days)
+
+    stmt = select(pantry_items).where(
+        pantry_items.c.expires_at <= cutoff
+    ).order_by(pantry_items.c.expires_at.asc())
+    with engine.begin() as conn:
+        rows = conn.execute(stmt).mappings().all()
+    return [
+        {"name": r["name"], "quantity": r["quantity"], "unit": r["unit"], "expires_at": r["expires_at"].strftime("%Y-%m-%d")}
+        for r in rows
+    ]
