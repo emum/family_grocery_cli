@@ -1,8 +1,8 @@
 from db import (
     init_db, list_items as db_list_items, add_item as db_add_item,
     remove_item as db_remove_item, toggle_purchased as db_toggle_purchased,
-    create_recipe, add_recipe_to_grocery,
-    add_pantry_item, list_pantry_items, get_expiring_items
+    create_recipe, add_recipe_to_grocery,add_pantry_item, list_pantry_items,
+    add_or_merge_pantry_item, get_expiring_items
 )
 from recipes import spoonacular_from_url, parse_pasted_ingredients
 
@@ -58,9 +58,34 @@ def toggle_purchased():
     try:
         num = int(input("Enter number of item to toggle purchased: "))
         if 1 <= num <= len(items):
-            db_toggle_purchased(items[num - 1]["id"])
-            state = "purchased" if not items[num - 1]["purchased"] else "not purchased"
-            print(f"Toggled '{items[num - 1]['name']}' to {state}.")
+            chosen = items[num - 1]  # snapshot before toggle
+            new_state = db_toggle_purchased(chosen["id"])
+            state = "purchased" if new_state else "not purchased"
+            print(f"Toggled '{chosen['name']}' to {state}.")
+
+            # If we just marked it purchased, auto-move into pantry
+            if new_state:
+                print("→ Adding to pantry (press Enter to skip any field).")
+                # Pre-fill qty/unit from the grocery item
+                default_qty = chosen.get("quantity", 1)
+                default_unit = chosen.get("unit") or ""
+
+                exp = input("Expiration date (YYYY-MM-DD, optional): ").strip() or None
+
+                # Quantity/unit prompts are optional; keep existing if blank
+                qty_in = input(f"Quantity [{default_qty}]: ").strip()
+                unit_in = input(f"Unit [{default_unit}]: ").strip()
+
+                try:
+                    q = float(qty_in) if qty_in else float(default_qty or 1)
+                except ValueError:
+                    q = float(default_qty or 1)
+
+                u = unit_in if unit_in else (default_unit or None)
+
+                add_or_merge_pantry_item(chosen["name"], q, u, exp)
+                print(f"✓ Moved to pantry: {chosen['name']} — {q}{(' ' + u) if u else ''}{(' (exp ' + exp + ')') if exp else ''}")
+
         else:
             print("Invalid number.")
     except ValueError:

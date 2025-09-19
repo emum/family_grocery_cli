@@ -218,6 +218,66 @@ def get_expiring_items(days: int = 3):
     with engine.begin() as conn:
         rows = conn.execute(stmt).mappings().all()
     return [
-        {"name": r["name"], "quantity": r["quantity"], "unit": r["unit"], "expires_at": r["expires_at"].strftime("%Y-%m-%d")}
+        {"name": r["name"], 
+         "quantity": r["quantity"], 
+         "unit": r["unit"], 
+         "expires_at": r["expires_at"].strftime("%Y-%m-%d")}
         for r in rows
     ]
+
+
+def toggle_purchased(item_id: int) -> bool:
+    with engine.begin() as conn:
+        row = conn.execute(
+            select(grocery_items.c.purchased,
+                   grocery_items.c.name,
+                   grocery_items.c.quantity,
+                   grocery_items.c.unit)
+            .where(grocery_items.c.id == item_id)
+        ).mappings().first()
+        if not row:
+            return False
+        new_val = not row["purchased"]
+        conn.execute(
+            update(grocery_items)
+            .where(grocery_items.c.id == item_id)
+            .values(purchased=new_val)
+        )
+        return new_val
+                
+def add_or_merge_pantry_item(name: str, quantity: float = 1.0, unit: str | None = None, expires_at: str | None = None):
+        """Insert or merge pantry items by (name, unit, expires_at)."""
+        exp_date = None
+        if expires_at:
+            try:
+                exp_date = datetime.strptime(expires_at, "%Y-%m-%d").date()
+            except ValueError:
+                exp_date = None
+    
+        with engine.begin() as conn:
+            # Find existing pantry row with same (name, unit, expires_at)
+            existing = conn.execute(
+                select(pantry_items.c.id, pantry_items.c.quantity)
+                .where(pantry_items.c.name.ilike(name))
+                .where((pantry_items.c.unit == unit) if unit is not None else pantry_items.c.unit.is_(None))
+                .where((pantry_items.c.expires_at == exp_date) if exp_date is not None else pantry_items.c.expires_at.is_(None))
+            ).mappings().first()
+    
+            q = float(quantity or 1)
+    
+            if existing:
+                conn.execute(
+                    update(pantry_items)
+                    .where(pantry_items.c.id == existing["id"])
+                    .values(quantity=(existing["quantity"] or 0) + q)
+                )
+            else:
+                conn.execute(
+                    pantry_items.insert().values(
+                        name=name,
+                        quantity=q,
+                        unit=unit,
+                        expires_at=exp_date,
+                        added_at=datetime.utcnow()
+                    )
+                )   
